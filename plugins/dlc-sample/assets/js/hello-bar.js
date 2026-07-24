@@ -23,6 +23,7 @@
 		var bar = document.getElementById( "dlc-hello-bar" );
 		if ( bar ) {
 			bar.classList.add( "dlc-hello-bar--hidden" );
+			document.body.classList.remove( "dlc-hello-bar-visible" );
 			try {
 				localStorage.setItem( STORAGE_KEY, Date.now().toString() );
 			} catch ( e ) {
@@ -41,6 +42,9 @@
 			bar.style.display = "none";
 			return;
 		}
+
+		// Push page content down so bar doesn't cover heading.
+		document.body.classList.add( "dlc-hello-bar-visible" );
 
 		var btn = bar.querySelector( ".dlc-hello-bar__dismiss" );
 		if ( btn ) {
