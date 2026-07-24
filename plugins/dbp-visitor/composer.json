@@ -1,0 +1,24 @@
+{
+	"name": "dlc/dbp-visitor",
+	"description": "DBP Visitor Welcome Bar - WordPress Plugin",
+	"type": "wordpress-plugin",
+	"license": "GPL-2.0-or-later",
+	"require": {
+		"php": ">=7.4"
+	},
+	"require-dev": {
+		"squizlabs/php_codesniffer": "^3.7",
+		"wp-coding-standards/wpcs": "^3.0",
+		"phpcompatibility/phpcompatibility-wp": "*",
+		"dealerdirect/phpcodesniffer-composer-installer": "^1.0"
+	},
+	"config": {
+		"allow-plugins": {
+			"dealerdirect/phpcodesniffer-composer-installer": true
+		}
+	},
+	"scripts": {
+		"lint": "phpcs --standard=WordPress dbp-visitor.php",
+		"lint:fix": "phpcbf --standard=WordPress dbp-visitor.php"
+	}
+}

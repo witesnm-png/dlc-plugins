@@ -1,0 +1,82 @@
+name: Deploy dbp-visitor to Staging (Auto)
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - 'plugins/dbp-visitor/**'
+      - 'scripts/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate PHP syntax
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq php-cli > /dev/null
+          find "plugins/dbp-visitor" -name "*.php" -exec php -l {} \;
+
+      - name: Validate JS syntax
+        run: find "plugins/dbp-visitor" -name "*.js" ! -path "*/node_modules/*" -exec node --check {} \;
+
+  build:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build plugin
+        run: bash scripts/build.sh dbp-visitor
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbp-visitor-staging
+          path: dist/dbp-visitor.zip
+          retention-days: 7
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dbp-visitor-staging
+
+      - name: Deploy to staging
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_USER: ${{ secrets.STAGING_USER }}
+          WP_PATH: ${{ vars.WP_PATH || '/opt/bitnami/wordpress' }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$STAGING_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          scp -i ~/.ssh/deploy_key "dbp-visitor.zip" "${STAGING_USER}@${STAGING_HOST}:/tmp/dbp-visitor.zip"
+
+          ssh -i ~/.ssh/deploy_key "${STAGING_USER}@${STAGING_HOST}" << EOF
+            WP_CLI=\$(which wp 2>/dev/null || echo "/opt/bitnami/wp-cli/bin/wp")
+            sudo \$WP_CLI plugin install /tmp/dbp-visitor.zip --force --activate --path=${WP_PATH} --allow-root
+            rm -f /tmp/dbp-visitor.zip
+          EOF
+
+      - name: Validate deployment
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+        run: |
+          sleep 5
+          RESPONSE=$(curl -sf "$STAGING_URL" || echo "")
+          if echo "$RESPONSE" | grep -q "dbp-visitor-bar"; then
+            echo "PASS: dbp-visitor bar HTML present on staging"
+          else
+            echo "FAIL: dbp-visitor bar not found on staging"
+            exit 1
+          fi
