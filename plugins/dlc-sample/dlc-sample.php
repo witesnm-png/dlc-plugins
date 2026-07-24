@@ -2,7 +2,7 @@
 /**
  * Plugin Name: DLC Sample - Hello Bar
  * Description: Displays a dismissible hello bar with a call-to-action on all pages.
- * Version: 0.0.0-dev
+ * Version: 1.1.0
  * Author: DLC
  * License: GPL-2.0-or-later
  * Text Domain: dlc-sample
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DLC_HELLO_BAR_VERSION', '0.0.0-dev' );
+define( 'DLC_HELLO_BAR_VERSION', '1.1.0' );
 
 /**
  * Set default options on plugin activation.

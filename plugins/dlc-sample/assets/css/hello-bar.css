@@ -15,6 +15,16 @@
 	transition: transform 0.3s ease;
 }
 
+/* Push page content down so the bar doesn't cover the heading */
+body.dlc-hello-bar-visible {
+	padding-top: 48px;
+	transition: padding-top 0.3s ease;
+}
+
+body.admin-bar.dlc-hello-bar-visible {
+	padding-top: 48px;
+}
+
 #dlc-hello-bar.dlc-hello-bar--hidden {
 	transform: translateY(-100%);
 }
