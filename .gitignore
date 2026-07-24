@@ -1,0 +1,24 @@
+# Ignore everything in wp-content except our managed files
+database/
+debug.log
+fonts/
+themes/
+index.php
+
+# Build artifacts
+build/
+dist/
+vendor/
+node_modules/
+
+# Environment / secrets
+*.pem
+.env
+lightsail-key.pem
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# WordPress misc
+*.log

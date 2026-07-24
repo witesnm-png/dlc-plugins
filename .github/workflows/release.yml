@@ -1,0 +1,155 @@
+name: Release Plugin
+
+on:
+  push:
+    tags:
+      - '*/v*'   # matches dlc-sample/v1.0.0, dlc-forms/v2.1.0, etc.
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      plugin: ${{ steps.parse.outputs.plugin }}
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - name: Parse tag
+        id: parse
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          PLUGIN="${TAG%%/v*}"
+          VERSION="${TAG#*/v}"
+          echo "plugin=${PLUGIN}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Plugin: ${PLUGIN}, Version: ${VERSION}"
+
+  validate:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate plugin exists
+        run: |
+          test -d "plugins/${{ needs.prepare.outputs.plugin }}" || { echo "ERROR: Plugin '${{ needs.prepare.outputs.plugin }}' not found"; exit 1; }
+
+      - name: Validate PHP syntax
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq php-cli > /dev/null
+          find "plugins/${{ needs.prepare.outputs.plugin }}" -name "*.php" -exec php -l {} \;
+
+      - name: Validate JS syntax
+        run: |
+          find "plugins/${{ needs.prepare.outputs.plugin }}" -name "*.js" -exec node --check {} \;
+
+  build:
+    needs: [prepare, validate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build plugin
+        env:
+          PLUGIN_VERSION: ${{ needs.prepare.outputs.version }}
+        run: bash scripts/build.sh "${{ needs.prepare.outputs.plugin }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.prepare.outputs.plugin }}-${{ needs.prepare.outputs.version }}
+          path: dist/${{ needs.prepare.outputs.plugin }}-${{ needs.prepare.outputs.version }}.zip
+          retention-days: 90
+
+  release:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.prepare.outputs.plugin }}-${{ needs.prepare.outputs.version }}
+
+      - name: Generate changelog
+        id: changelog
+        env:
+          PLUGIN: ${{ needs.prepare.outputs.plugin }}
+        run: |
+          PREV_TAG=$(git tag -l "${PLUGIN}/v*" --sort=-version:refname | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            CHANGES="Initial release"
+          else
+            CHANGES=$(git log "${PREV_TAG}..HEAD" --pretty=format:"- %s" --no-merges -- "plugins/${PLUGIN}/")
+            if [ -z "$CHANGES" ]; then
+              CHANGES="- Version bump"
+            fi
+          fi
+          echo "changes<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "${{ needs.prepare.outputs.plugin }} v${{ needs.prepare.outputs.version }}"
+          body: |
+            ## ${{ needs.prepare.outputs.plugin }} v${{ needs.prepare.outputs.version }}
+
+            ### What's Changed
+            ${{ steps.changelog.outputs.changes }}
+
+            ### Installation
+            Download `${{ needs.prepare.outputs.plugin }}-${{ needs.prepare.outputs.version }}.zip` and install via:
+            ```bash
+            wp plugin install ${{ needs.prepare.outputs.plugin }}-${{ needs.prepare.outputs.version }}.zip --force --activate
+            ```
+          files: ${{ needs.prepare.outputs.plugin }}-${{ needs.prepare.outputs.version }}.zip
+
+  deploy-staging:
+    needs: [prepare, build, release]
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.prepare.outputs.plugin }}-${{ needs.prepare.outputs.version }}
+
+      - name: Deploy to staging
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_USER: ${{ secrets.STAGING_USER }}
+          WP_PATH: ${{ vars.WP_PATH || '/opt/bitnami/wordpress' }}
+          PLUGIN: ${{ needs.prepare.outputs.plugin }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$STAGING_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          scp -i ~/.ssh/deploy_key "${PLUGIN}-${VERSION}.zip" "${STAGING_USER}@${STAGING_HOST}:/tmp/${PLUGIN}.zip"
+
+          ssh -i ~/.ssh/deploy_key "${STAGING_USER}@${STAGING_HOST}" << EOF
+            WP_CLI=\$(which wp 2>/dev/null || echo "/opt/bitnami/wp-cli/bin/wp")
+            sudo \$WP_CLI plugin install /tmp/${PLUGIN}.zip --force --activate --path=${WP_PATH} --allow-root
+            rm -f /tmp/${PLUGIN}.zip
+            echo "Deployed ${PLUGIN} v${VERSION} to staging"
+          EOF
+
+      - name: Validate staging
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+        run: |
+          HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" "$STAGING_URL" || echo "000")
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "PASS: Staging responds HTTP 200"
+          else
+            echo "FAIL: Staging returned HTTP $HTTP_CODE"
+            exit 1
+          fi

@@ -1,0 +1,104 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      plugin:
+        description: 'Plugin name (folder name under plugins/)'
+        required: true
+        type: string
+      confirm:
+        description: 'Type "deploy-prod" to confirm'
+        required: true
+        type: string
+      staging_validated:
+        description: 'Has staging been validated?'
+        required: true
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
+
+jobs:
+  pre-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm
+        if: inputs.confirm != 'deploy-prod'
+        run: exit 1
+      - name: Staging check
+        if: inputs.staging_validated != 'yes'
+        run: exit 1
+
+  validate:
+    needs: pre-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate plugin exists
+        run: test -d "plugins/${{ inputs.plugin }}"
+      - name: Validate PHP
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq php-cli > /dev/null
+          find "plugins/${{ inputs.plugin }}" -name "*.php" -exec php -l {} \;
+      - name: Validate JS
+        run: find "plugins/${{ inputs.plugin }}" -name "*.js" -exec node --check {} \;
+
+  build:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: bash scripts/build.sh "${{ inputs.plugin }}"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.plugin }}-production
+          path: dist/${{ inputs.plugin }}.zip
+          retention-days: 30
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.plugin }}-production
+
+      - name: Deploy to production
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          WP_PATH: ${{ vars.WP_PATH || '/opt/bitnami/wordpress' }}
+          PLUGIN: ${{ inputs.plugin }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$PRODUCTION_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          scp -i ~/.ssh/deploy_key "${PLUGIN}.zip" "${PRODUCTION_USER}@${PRODUCTION_HOST}:/tmp/${PLUGIN}.zip"
+
+          ssh -i ~/.ssh/deploy_key "${PRODUCTION_USER}@${PRODUCTION_HOST}" << EOF
+            WP_CLI=\$(which wp 2>/dev/null || echo "/opt/bitnami/wp-cli/bin/wp")
+            PLUGIN_PATH="${WP_PATH}/wp-content/plugins/${PLUGIN}"
+            # Backup
+            if [ -d "\$PLUGIN_PATH" ]; then
+              sudo rm -rf "\${PLUGIN_PATH}.bak"
+              sudo cp -r "\$PLUGIN_PATH" "\${PLUGIN_PATH}.bak"
+            fi
+            # Install
+            sudo \$WP_CLI plugin install /tmp/${PLUGIN}.zip --force --activate --path=${WP_PATH} --allow-root
+            rm -f /tmp/${PLUGIN}.zip
+          EOF
+
+      - name: Validate
+        env:
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+        run: |
+          curl -sf "$PRODUCTION_URL" > /dev/null || { echo "FAIL"; exit 1; }
+          echo "PASS: Production responds"

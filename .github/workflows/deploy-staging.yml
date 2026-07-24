@@ -1,0 +1,90 @@
+name: Deploy to Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      plugin:
+        description: 'Plugin name (folder name under plugins/)'
+        required: true
+        type: string
+      confirm:
+        description: 'Type "deploy" to confirm'
+        required: true
+        type: string
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm
+        if: inputs.confirm != 'deploy'
+        run: |
+          echo "ERROR: Type 'deploy' to confirm."
+          exit 1
+
+      - name: Validate plugin exists
+        run: test -d "plugins/${{ inputs.plugin }}"
+
+      - name: Validate PHP syntax
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq php-cli > /dev/null
+          find "plugins/${{ inputs.plugin }}" -name "*.php" -exec php -l {} \;
+
+      - name: Validate JS syntax
+        run: find "plugins/${{ inputs.plugin }}" -name "*.js" -exec node --check {} \;
+
+  build:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: bash scripts/build.sh "${{ inputs.plugin }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.plugin }}-staging
+          path: dist/${{ inputs.plugin }}.zip
+          retention-days: 7
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.plugin }}-staging
+
+      - name: Deploy to staging
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_USER: ${{ secrets.STAGING_USER }}
+          WP_PATH: ${{ vars.WP_PATH || '/opt/bitnami/wordpress' }}
+          PLUGIN: ${{ inputs.plugin }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$STAGING_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          scp -i ~/.ssh/deploy_key "${PLUGIN}.zip" "${STAGING_USER}@${STAGING_HOST}:/tmp/${PLUGIN}.zip"
+
+          ssh -i ~/.ssh/deploy_key "${STAGING_USER}@${STAGING_HOST}" << EOF
+            WP_CLI=\$(which wp 2>/dev/null || echo "/opt/bitnami/wp-cli/bin/wp")
+            sudo \$WP_CLI plugin install /tmp/${PLUGIN}.zip --force --activate --path=${WP_PATH} --allow-root
+            rm -f /tmp/${PLUGIN}.zip
+          EOF
+
+      - name: Validate
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+        run: |
+          curl -sf "$STAGING_URL" > /dev/null || { echo "FAIL"; exit 1; }
+          echo "PASS: Staging responds"

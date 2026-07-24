@@ -1,0 +1,125 @@
+.dlc-hello-bar-preview-wrap {
+	margin-top: 30px;
+	padding: 20px;
+	background: #f0f0f1;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+}
+
+.dlc-hello-bar-preview-wrap h2 {
+	margin-top: 0;
+	margin-bottom: 15px;
+	font-size: 14px;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: #50575e;
+}
+
+.dlc-hello-bar-preview {
+	position: relative;
+	padding: 12px 50px 12px 20px;
+	text-align: center;
+	font-size: 15px;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+	box-sizing: border-box;
+	line-height: 1.4;
+	border-radius: 4px;
+}
+
+.dlc-hello-bar-preview a {
+	margin-left: 10px;
+	text-decoration: underline;
+	font-weight: 600;
+}
+
+.dlc-hello-bar-preview .dlc-hello-bar__dismiss {
+	background: none;
+	border: none;
+	cursor: default;
+	position: absolute;
+	right: 15px;
+	top: 50%;
+	transform: translateY(-50%);
+	font-size: 18px;
+	line-height: 1;
+	padding: 5px 8px;
+}
+
+/* Preview theme colors */
+.dlc-hello-bar-preview[data-theme="blue"] {
+	background-color: #0073aa;
+	color: #ffffff;
+}
+
+.dlc-hello-bar-preview[data-theme="blue"] a {
+	color: #cce5ff;
+}
+
+.dlc-hello-bar-preview[data-theme="blue"] .dlc-hello-bar__dismiss {
+	color: #ffffff;
+}
+
+.dlc-hello-bar-preview[data-theme="dark"] {
+	background-color: #1e1e1e;
+	color: #f0f0f0;
+}
+
+.dlc-hello-bar-preview[data-theme="dark"] a {
+	color: #90caf9;
+}
+
+.dlc-hello-bar-preview[data-theme="dark"] .dlc-hello-bar__dismiss {
+	color: #f0f0f0;
+}
+
+.dlc-hello-bar-preview[data-theme="green"] {
+	background-color: #2e7d32;
+	color: #ffffff;
+}
+
+.dlc-hello-bar-preview[data-theme="green"] a {
+	color: #c8e6c9;
+}
+
+.dlc-hello-bar-preview[data-theme="green"] .dlc-hello-bar__dismiss {
+	color: #ffffff;
+}
+
+.dlc-hello-bar-preview[data-theme="red"] {
+	background-color: #c62828;
+	color: #ffffff;
+}
+
+.dlc-hello-bar-preview[data-theme="red"] a {
+	color: #ffcdd2;
+}
+
+.dlc-hello-bar-preview[data-theme="red"] .dlc-hello-bar__dismiss {
+	color: #ffffff;
+}
+
+.dlc-hello-bar-preview[data-theme="purple"] {
+	background-color: #6a1b9a;
+	color: #ffffff;
+}
+
+.dlc-hello-bar-preview[data-theme="purple"] a {
+	color: #e1bee7;
+}
+
+.dlc-hello-bar-preview[data-theme="purple"] .dlc-hello-bar__dismiss {
+	color: #ffffff;
+}
+
+.dlc-hello-bar-preview[data-theme="orange"] {
+	background-color: #e65100;
+	color: #ffffff;
+}
+
+.dlc-hello-bar-preview[data-theme="orange"] a {
+	color: #ffe0b2;
+}
+
+.dlc-hello-bar-preview[data-theme="orange"] .dlc-hello-bar__dismiss {
+	color: #ffffff;
+}
