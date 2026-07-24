@@ -23,3 +23,5 @@ Thumbs.db
 
 # WordPress misc
 *.log
+plugins/akismet/
+plugins/hello.php

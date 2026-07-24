@@ -593,3 +593,24 @@ Both include validate → build → deploy → validate steps. Path filtering en
 
 ---
 
+
+## Git Flow Applied Retroactively
+**Timestamp**: 2026-07-24T13:30:00Z
+**User Input**: "A" (retroactively apply GitFlow)
+**AI Response**: Created proper GitFlow structure:
+- Created `feature/dbp-visitor` branch, committed all plugin files
+- Created `develop` branch from master, merged feature into it
+- Pushed `develop` to origin (triggers staging workflow)
+- Merged `develop` into `master` (triggers production workflow with approval)
+- Pushed `master` to origin
+**Git Graph**:
+```
+master ← Merge develop (dbp-visitor v1.0.0 release)
+  ├── develop ← Merge feature/dbp-visitor
+  │     └── feature/dbp-visitor ← feat(dbp-visitor): add visitor welcome bar plugin
+  └── dlc-sample/v1.0.0 (previous state)
+```
+**Context**: GitFlow applied. Push to develop triggered staging deploy workflow. Push to master triggered production deploy workflow (requires approval gate in GitHub Environments).
+
+---
+
