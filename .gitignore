@@ -10,6 +10,7 @@ build/
 dist/
 vendor/
 node_modules/
+test-results/
 
 # Environment / secrets
 *.pem
