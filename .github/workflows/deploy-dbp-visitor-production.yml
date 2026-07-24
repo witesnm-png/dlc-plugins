@@ -1,0 +1,89 @@
+name: Deploy dbp-visitor to Production
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'plugins/dbp-visitor/**'
+      - 'scripts/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate PHP syntax
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq php-cli > /dev/null
+          find "plugins/dbp-visitor" -name "*.php" -exec php -l {} \;
+
+      - name: Validate JS syntax
+        run: find "plugins/dbp-visitor" -name "*.js" ! -path "*/node_modules/*" -exec node --check {} \;
+
+  build:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build plugin
+        run: bash scripts/build.sh dbp-visitor
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbp-visitor-production
+          path: dist/dbp-visitor.zip
+          retention-days: 30
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dbp-visitor-production
+
+      - name: Deploy to production
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          WP_PATH: ${{ vars.WP_PATH || '/opt/bitnami/wordpress' }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$PRODUCTION_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          scp -i ~/.ssh/deploy_key "dbp-visitor.zip" "${PRODUCTION_USER}@${PRODUCTION_HOST}:/tmp/dbp-visitor.zip"
+
+          ssh -i ~/.ssh/deploy_key "${PRODUCTION_USER}@${PRODUCTION_HOST}" << EOF
+            WP_CLI=\$(which wp 2>/dev/null || echo "/opt/bitnami/wp-cli/bin/wp")
+            PLUGIN_PATH="${WP_PATH}/wp-content/plugins/dbp-visitor"
+            # Backup existing
+            if [ -d "\$PLUGIN_PATH" ]; then
+              sudo rm -rf "\${PLUGIN_PATH}.bak"
+              sudo cp -r "\$PLUGIN_PATH" "\${PLUGIN_PATH}.bak"
+            fi
+            # Install and activate
+            sudo \$WP_CLI plugin install /tmp/dbp-visitor.zip --force --activate --path=${WP_PATH} --allow-root
+            rm -f /tmp/dbp-visitor.zip
+          EOF
+
+      - name: Validate deployment
+        env:
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL }}
+        run: |
+          sleep 5
+          RESPONSE=$(curl -sf "$PRODUCTION_URL" || echo "")
+          if echo "$RESPONSE" | grep -q "dbp-visitor-bar"; then
+            echo "PASS: dbp-visitor bar HTML present on production"
+          else
+            echo "FAIL: dbp-visitor bar not found on production"
+            exit 1
+          fi
